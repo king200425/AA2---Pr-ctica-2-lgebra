@@ -1,15 +1,15 @@
 class Boid {
-  PVector pos;      // Vector de posición (x, y, z)
-  PVector vel;      // Vector de velocidad (x, y, z)
-  PVector acc;      // Vector de aceleración (x, y, z)
-  float maxSpeed;   // Velocidad máxima permitida
-  float maxForce;   // Nuevo: Fuerza máxima de giro
+  PVector pos;    // Posición
+  PVector vel;     // Velocidad
+  PVector acc;     // Aceleración
+  float maxSpeed;  // Velocidad máxima
+  float maxForce;   // Fuerza máxima de giro
 
   Boid(PVector startPos) {
     pos = startPos.copy();
-    vel = PVector.random3D(); // Dirección de vuelo 3D aleatoria inicial
-    vel.mult(random(1, 2));   // Magnitud de la velocidad inicial
-    acc = new PVector(0, 0, 0); // Aceleración inicial a 0
+    vel = PVector.random3D(); 
+    vel.mult(random(1, 2));   
+    acc = new PVector(0, 0, 0); 
     maxSpeed = 3.0;
     maxForce = 0.05;
   }
@@ -18,74 +18,72 @@ class Boid {
     acc.add(force);
   }
   
- // NÚCLEO DE INTELIGENCIA ARTIFICIAL
-    void aplicarComportamiento(ArrayList<Boid> boids, PVector destinoActual, PVector liderActual, PVector depredador, boolean hayDepredador) {
-    //Calcular las 3 fuerzas heurísticas
+  // Núcleo de comportamiento grupal (Heurísticas)
+  void aplicarComportamiento(ArrayList<Boid> boids, PVector destinoActual, PVector liderActual, PVector depredador, boolean hayDepredador, PVector[] obstaculosFijos) {
+    
     PVector fuerzaDestino = buscar(destinoActual);
     PVector fuerzaSeparacion = separar(boids);
     PVector fuerzaCohesion = juntar(boids);
-    //Seguir al líder
     PVector fuerzaLider = buscar(liderActual);
-    // Huir del depredador
+    
     PVector fuerzaHuida = new PVector(0, 0, 0);
     if (hayDepredador) {
       fuerzaHuida = huir(depredador);
     }
     
-    // Darles peso/importancia relativa
-    fuerzaDestino.mult(1.0);    // Fuerza para ir al destino
-    fuerzaSeparacion.mult(1.5); // Queremos que evitar choques sea prioritario
-    fuerzaCohesion.mult(1.0);   // Fuerza para mantenerse en grupo
-    fuerzaLider.mult(1.2); // El líder tiene una influencia fuerte
-    fuerzaHuida.mult(5.0); // ¡Prioridad máxima para sobrevivir!
+    PVector fuerzaObstaculos = esquivar(obstaculosFijos);
     
-    // Aplicar las fuerzas al cuerpo
+    // Pesos de las fuerzas (Prioridades)
+    fuerzaDestino.mult(1.0);    
+    fuerzaSeparacion.mult(1.5); 
+    fuerzaCohesion.mult(1.0);   
+    fuerzaLider.mult(1.2); 
+    fuerzaHuida.mult(5.0); // Prioridad máxima para huir
+    fuerzaObstaculos.mult(3.0); // Prioridad alta para evitar obstáculos
+    
     applyForce(fuerzaDestino);
     applyForce(fuerzaSeparacion);
     applyForce(fuerzaCohesion);
     applyForce(fuerzaLider);
     applyForce(fuerzaHuida);
+    applyForce(fuerzaObstaculos);
   }
 
-  //1：Ir al destino
+  //Ir al destino
   PVector buscar(PVector target) {
-    PVector desired = PVector.sub(target, pos); // Vector hacia el objetivo (Algebra: Destino - Posición actual)
+    PVector desired = PVector.sub(target, pos); 
     desired.normalize();
     desired.mult(maxSpeed);
     
-    // Fuerza de giro = Velocidad Deseada - Velocidad Actual
     PVector steer = PVector.sub(desired, vel);
     steer.limit(maxForce);
     return steer;
   }
   
-  // Álgebra para huir
+  // Huir del depredador
   PVector huir(PVector target) {
-    // Álgebra: Vector desde el target HACIA la posición actual
     PVector desired = PVector.sub(pos, target); 
     float d = desired.mag();
     
-    // Solo huyen si el depredador está cerca (Radio de pánico = 150)
-    if (d < 150) { 
+    if (d < 150) { // Solo huyen si están cerca
       desired.normalize();
       desired.mult(maxSpeed);
       
       PVector steer = PVector.sub(desired, vel);
-      steer.limit(maxForce * 2); // Pueden girar más rápido al huir
+      steer.limit(maxForce * 2); // Giro más rápido al huir
       return steer;
     }
-    return new PVector(0, 0, 0); // Si está lejos, no sienten miedo
+    return new PVector(0, 0, 0); 
   }
 
-  //2: Evitar choques con vecinos
+  // Evitar choques con los compañeros
   PVector separar(ArrayList<Boid> boids) {
-    float distanciaDeseada = 35.0f; // Distancia mínima segura
+    float distanciaDeseada = 35.0f; 
     PVector steer = new PVector(0, 0, 0);
     int count = 0;
     
     for (Boid otro : boids) {
       float d = PVector.dist(pos, otro.pos);
-      // Si está demasiado cerca y no es él mismo
       if ((d > 0) && (d < distanciaDeseada)) {
         PVector alejar = PVector.sub(pos, otro.pos);
         alejar.normalize();
@@ -104,31 +102,58 @@ class Boid {
     return steer;
   }
 
-  //3: Mantenerse cerca del grupo
+  // Mantenerse cerca del grupo
   PVector juntar(ArrayList<Boid> boids) {
-    float distanciaVecino = 100.0f; // Rango de visión para buscar vecinos
+    float distanciaVecino = 100.0f; 
     PVector suma = new PVector(0, 0, 0);
     int count = 0;
     
     for (Boid otro : boids) {
       float d = PVector.dist(pos, otro.pos);
       if ((d > 0) && (d < distanciaVecino)) {
-        suma.add(otro.pos); // Sumar posiciones de los vecinos
+        suma.add(otro.pos); 
         count++;
       }
     }
     if (count > 0) {
-      suma.div(count); // Calcular el centro de masa
-      return buscar(suma); // Ir hacia ese centro usando la función de buscar destino
+      suma.div(count); 
+      return buscar(suma); 
     }
     return new PVector(0, 0, 0);
+  }
+
+  // Evitar obstáculos fijos
+  PVector esquivar(PVector[] obstaculos) {
+    float distanciaSegura = 60.0; 
+    PVector steer = new PVector(0, 0, 0);
+    int count = 0;
+    
+    for (PVector obs : obstaculos) {
+      float d = PVector.dist(pos, obs);
+      if (d > 0 && d < distanciaSegura) {
+        PVector alejar = PVector.sub(pos, obs);
+        alejar.normalize();
+        alejar.div(d); 
+        steer.add(alejar);
+        count++;
+      }
+    }
+    
+    if (count > 0) {
+      steer.div((float)count);
+      steer.normalize();
+      steer.mult(maxSpeed);
+      steer.sub(vel);
+      steer.limit(maxForce * 1.5); 
+    }
+    return steer;
   }
 
   void update() {
     vel.add(acc);        
     vel.limit(maxSpeed); 
     pos.add(vel);        
-    acc.mult(0);         
+    acc.mult(0);       // Resetear la aceleración a 0 en cada frame
     
     checkEdges();        
   }
@@ -144,6 +169,7 @@ class Boid {
     popMatrix(); 
   }
   
+  // Limitar los bordes del espacio
   void checkEdges() {
     if (pos.x > width) pos.x = 0;
     if (pos.x < 0) pos.x = width;
